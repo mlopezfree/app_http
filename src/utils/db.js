@@ -10,6 +10,7 @@ export const initDB = async () => {
   });
 };
 
+// data puede contener: url, method, headers, cookies, body, params, date, response, etc.
 export const saveRequest = async (data) => {
   const db = await initDB();
   await db.add('requests', data);

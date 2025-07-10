@@ -19,7 +19,7 @@ function timeAgo(date) {
   return d.toLocaleString();
 }
 
-export default function RequestList() {
+export default function RequestList({ onReplicate }) {
   const [requests, setRequests] = useState([]);
   const [selectedResponse, setSelectedResponse] = useState(null);
   const [showModal, setShowModal] = useState(false);
@@ -30,6 +30,7 @@ export default function RequestList() {
   const [search, setSearch] = useState('');
   const [methodFilter, setMethodFilter] = useState('Todos');
   const [responseSearch, setResponseSearch] = useState('');
+  const [selectedRequest, setSelectedRequest] = useState(null);
 
   const loadRequests = async () => {
     const all = await getAllRequests();
@@ -50,8 +51,12 @@ export default function RequestList() {
     return matchesSearch && matchesMethod;
   });
 
-  const handleShowResponse = (response) => {
-    setSelectedResponse(response);
+  // Ordenar por fecha descendente
+  const sortedRequests = [...filteredRequests].sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  const handleShowResponse = (request) => {
+    setSelectedRequest(request);
+    setSelectedResponse(request.response);
     setShowModal(true);
   };
 
@@ -59,6 +64,7 @@ export default function RequestList() {
     if (e) e.stopPropagation();
     setShowModal(false);
     setSelectedResponse(null);
+    setSelectedRequest(null);
   };
 
   // Cerrar modal con Escape
@@ -86,6 +92,13 @@ export default function RequestList() {
     setClearing(false);
     setShowConfirm(false);
     loadRequests();
+  };
+
+  // Copiar al portapapeles
+  const copyToClipboard = (text) => {
+    navigator.clipboard.writeText(text);
+    setFeedback('¡Copiado!');
+    setTimeout(() => setFeedback(''), 1200);
   };
 
   // Resaltado simple para JSON y búsqueda en respuesta
@@ -167,19 +180,26 @@ export default function RequestList() {
       {/* Lista filtrada */}
       {feedback && <div className="text-green-600 dark:text-green-400 text-xs mb-2 animate-fade-in">{feedback}</div>}
       <ul className="flex flex-col gap-3">
-        {filteredRequests.map(req => (
+        {sortedRequests.map(req => (
           <li key={req.id} className="bg-gray-800 border border-gray-700 rounded-lg p-3 flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3 transition">
             <div className="flex items-center gap-2 w-full">
               <span className="px-2 py-0.5 rounded text-xs font-semibold border whitespace-nowrap bg-gray-900 text-green-400 border-gray-700">{req.method}</span>
               <span className="font-mono text-sm break-all flex-1">{req.url}</span>
+              {req.name && <span className="ml-2 text-xs text-blue-300 font-semibold">{req.name}</span>}
             </div>
             <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full sm:w-auto">
               <span className="text-xs text-gray-400 whitespace-nowrap">{timeAgo(req.date)}</span>
               <button
                 className="flex-grow-0 flex items-center gap-1 bg-gray-700 text-gray-100 px-3 py-1 rounded-md text-xs font-medium hover:bg-gray-600 transition-colors"
-                onClick={() => handleShowResponse(req.response)}
+                onClick={() => handleShowResponse(req)}
               >
                 Respuesta
+              </button>
+              <button
+                className="flex-grow-0 bg-gray-700 text-gray-100 px-2 py-1 rounded-md text-xs hover:bg-blue-700 border border-gray-700 transition"
+                onClick={() => onReplicate && onReplicate(req)}
+              >
+                Replicar
               </button>
               <button
                 className="flex-grow-0 bg-gray-900 text-gray-100 px-2 py-1 rounded-md text-xs hover:bg-red-700 border border-gray-700 transition"
@@ -192,7 +212,7 @@ export default function RequestList() {
           </li>
         ))}
       </ul>
-      {showModal && (
+      {showModal && selectedRequest && (
         <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 animate-fade-in" onClick={handleCloseModal}>
           <div className="bg-gray-900 p-5 rounded-lg border border-gray-700 shadow max-w-2xl w-full relative animate-modal-in" onClick={e => e.stopPropagation()}>
             <button
@@ -203,7 +223,35 @@ export default function RequestList() {
             >
               ×
             </button>
-            <h3 className="text-lg font-semibold mb-2">Respuesta</h3>
+            <h3 className="text-lg font-semibold mb-2">Detalles de la petición</h3>
+            <div className="mb-2 text-xs text-gray-400 flex flex-wrap items-center gap-2">
+              <span>{selectedRequest.method} {selectedRequest.url}</span>
+              <button className="ml-2 text-xs text-blue-300 hover:underline" onClick={() => copyToClipboard(selectedRequest.url)}>Copiar URL</button>
+              {selectedRequest.status && <span className="ml-2 text-xs text-green-400">Status: {selectedRequest.status}</span>}
+            </div>
+            {/* Params */}
+            {selectedRequest.params && selectedRequest.params.length > 0 && (
+              <details className="mb-2" open>
+                <summary className="cursor-pointer text-sm font-semibold text-blue-300">Parámetros <button className="ml-2 text-xs text-blue-300 hover:underline" onClick={e => {e.stopPropagation();copyToClipboard(JSON.stringify(selectedRequest.params, null, 2));}}>Copiar</button></summary>
+                <pre className="bg-gray-800 p-2 rounded text-xs mt-1 overflow-x-auto">{JSON.stringify(selectedRequest.params, null, 2)}</pre>
+              </details>
+            )}
+            {/* Headers */}
+            {selectedRequest.headers && Object.keys(selectedRequest.headers).length > 0 && (
+              <details className="mb-2" open>
+                <summary className="cursor-pointer text-sm font-semibold text-blue-300">Headers <button className="ml-2 text-xs text-blue-300 hover:underline" onClick={e => {e.stopPropagation();copyToClipboard(JSON.stringify(selectedRequest.headers, null, 2));}}>Copiar</button></summary>
+                <pre className="bg-gray-800 p-2 rounded text-xs mt-1 overflow-x-auto">{JSON.stringify(selectedRequest.headers, null, 2)}</pre>
+              </details>
+            )}
+            {/* Body */}
+            {selectedRequest.body && (
+              <details className="mb-2" open>
+                <summary className="cursor-pointer text-sm font-semibold text-blue-300">Body <button className="ml-2 text-xs text-blue-300 hover:underline" onClick={e => {e.stopPropagation();copyToClipboard(typeof selectedRequest.body === 'object' ? JSON.stringify(selectedRequest.body, null, 2) : String(selectedRequest.body));}}>Copiar</button></summary>
+                <pre className="bg-gray-800 p-2 rounded text-xs mt-1 overflow-x-auto">{typeof selectedRequest.body === 'object' ? JSON.stringify(selectedRequest.body, null, 2) : String(selectedRequest.body)}</pre>
+              </details>
+            )}
+            {/* Respuesta */}
+            <h4 className="text-sm font-semibold text-blue-300 mt-4 mb-1">Respuesta</h4>
             <input
               type="text"
               className="mb-2 w-full bg-gray-800 border border-gray-700 text-gray-100 rounded-md px-3 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-400"
