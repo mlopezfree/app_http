@@ -2,17 +2,41 @@ import { saveRequest } from '../utils/db';
 import { useState, useEffect } from 'react';
 
 const METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'];
-const TABS = ['Params', 'Headers', 'Body'];
+const TABS = ['Params', 'Headers', 'Body', 'Prescript'];
 const CONFIG_KEY = 'http-client-configs';
 const CACHE_KEY = 'http-client-last';
+
+// Headers clásicos por defecto
+const DEFAULT_HEADERS = [
+  { key: 'Content-Type', value: 'application/json', enabled: true },
+  { key: 'Accept', value: 'application/json', enabled: true },
+];
+
+// Fusionar headers por defecto con los guardados, sin duplicar
+function mergeDefaultHeaders(headers) {
+  const keys = headers.map(h => h.key.toLowerCase());
+  const merged = [...headers];
+  DEFAULT_HEADERS.forEach(def => {
+    if (!keys.includes(def.key.toLowerCase())) {
+      merged.push({ ...def });
+    }
+  });
+  return merged;
+}
 
 export default function RequestForm({ onNewRequest, replica, setReplica }) {
   // Cargar del cache o valores por defecto
   const last = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}');
   const [urlBase, setUrlBase] = useState(last.urlBase || '');
   const [method, setMethod] = useState(last.method || 'GET');
-  const [params, setParams] = useState(last.params || [{ key: '', value: '' }]);
-  const [headers, setHeaders] = useState(last.headers || [{ key: '', value: '' }]);
+  const [params, setParams] = useState(
+    last.params ? last.params.map(p => ({ ...p, enabled: p.enabled !== false })) : [{ key: '', value: '', enabled: true }]
+  );
+  const [headers, setHeaders] = useState(
+    last.headers && last.headers.length
+      ? mergeDefaultHeaders(last.headers.map(h => ({ ...h, enabled: h.enabled !== false })))
+      : DEFAULT_HEADERS
+  );
   const [body, setBody] = useState(last.body || '');
   const [activeTab, setActiveTab] = useState(last.activeTab || 'Params');
   const [loading, setLoading] = useState(false);
@@ -20,21 +44,33 @@ export default function RequestForm({ onNewRequest, replica, setReplica }) {
   const [success, setSuccess] = useState(false);
   const [configs, setConfigs] = useState(() => JSON.parse(localStorage.getItem(CONFIG_KEY) || '[]'));
   const [configName, setConfigName] = useState('');
+  const [tags, setTags] = useState(last.tags || '');
+  const [collection, setCollection] = useState(last.collection || '');
+  const [prescript, setPrescript] = useState(last.prescript || '');
 
   // Guardar en cache cada vez que cambia algo relevante
   useEffect(() => {
-    localStorage.setItem(CACHE_KEY, JSON.stringify({ urlBase, method, params, headers, body, activeTab }));
-  }, [urlBase, method, params, headers, body, activeTab]);
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ urlBase, method, params, headers, body, activeTab, tags, collection, prescript }));
+  }, [urlBase, method, params, headers, body, activeTab, tags, collection, prescript]);
 
   // Cargar datos de una petición replicada
   useEffect(() => {
     if (replica) {
       setUrlBase(replica.url?.split('?')[0] || '');
       setMethod(replica.method || 'GET');
-      setParams(replica.params && replica.params.length ? replica.params : [{ key: '', value: '' }]);
-      setHeaders(replica.headers && Object.keys(replica.headers).length ? Object.entries(replica.headers).map(([key, value]) => ({ key, value })) : [{ key: '', value: '' }]);
+      setParams(replica.params && replica.params.length ? replica.params.map(p => ({ ...p, enabled: p.enabled !== false })) : [{ key: '', value: '', enabled: true }]);
+      setHeaders(
+        mergeDefaultHeaders(
+          replica.headers && Object.keys(replica.headers).length
+            ? Object.entries(replica.headers).map(([key, value]) => ({ key, value, enabled: true })).map(h => ({ ...h, enabled: h.enabled !== false }))
+            : []
+        )
+      );
       setBody(replica.body || '');
       setActiveTab('Params');
+      setTags(replica.tags || '');
+      setCollection(replica.collection || '');
+      setPrescript(replica.prescript || '');
       setReplica && setReplica(null);
     }
   }, [replica, setReplica]);
@@ -42,7 +78,7 @@ export default function RequestForm({ onNewRequest, replica, setReplica }) {
   // Guardar configuración
   const handleSaveConfig = () => {
     if (!configName.trim()) return;
-    const newConfig = { name: configName.trim(), urlBase, method, params, headers, body, activeTab, date: new Date() };
+    const newConfig = { name: configName.trim(), urlBase, method, params, headers, body, activeTab, tags, collection, prescript, date: new Date() };
     const newConfigs = [newConfig, ...configs];
     setConfigs(newConfigs);
     localStorage.setItem(CONFIG_KEY, JSON.stringify(newConfigs));
@@ -53,39 +89,50 @@ export default function RequestForm({ onNewRequest, replica, setReplica }) {
   const handleLoadConfig = (cfg) => {
     setUrlBase(cfg.urlBase);
     setMethod(cfg.method);
-    setParams(cfg.params);
-    setHeaders(cfg.headers);
+    setParams(cfg.params.map(p => ({ ...p, enabled: p.enabled !== false })));
+    setHeaders(mergeDefaultHeaders(cfg.headers.map(h => ({ ...h, enabled: h.enabled !== false }))));
     setBody(cfg.body);
     setActiveTab(cfg.activeTab);
+    setTags(cfg.tags || '');
+    setCollection(cfg.collection || '');
+    setPrescript(cfg.prescript || '');
   };
 
   // Limpiar formulario
   const handleClear = () => {
     setUrlBase('');
     setMethod('GET');
-    setParams([{ key: '', value: '' }]);
-    setHeaders([{ key: '', value: '' }]);
+    setParams([{ key: '', value: '', enabled: true }]);
+    setHeaders(DEFAULT_HEADERS);
     setBody('');
     setActiveTab('Params');
+    setTags('');
+    setCollection('');
+    setPrescript('');
   };
 
-  // Params
+  // Cambios en params y headers
   const handleParamChange = (idx, field, value) => {
     setParams(ps => ps.map((p, i) => i === idx ? { ...p, [field]: value } : p));
   };
-  const handleAddParam = () => setParams(ps => [...ps, { key: '', value: '' }]);
+  const handleParamEnabled = (idx, enabled) => {
+    setParams(ps => ps.map((p, i) => i === idx ? { ...p, enabled } : p));
+  };
+  const handleAddParam = () => setParams(ps => [...ps, { key: '', value: '', enabled: true }]);
   const handleRemoveParam = idx => setParams(ps => ps.length === 1 ? ps : ps.filter((_, i) => i !== idx));
 
-  // Headers
   const handleHeaderChange = (idx, field, value) => {
     setHeaders(hs => hs.map((h, i) => i === idx ? { ...h, [field]: value } : h));
   };
-  const handleAddHeader = () => setHeaders(hs => [...hs, { key: '', value: '' }]);
+  const handleHeaderEnabled = (idx, enabled) => {
+    setHeaders(hs => hs.map((h, i) => i === idx ? { ...h, enabled } : h));
+  };
+  const handleAddHeader = () => setHeaders(hs => [...hs, { key: '', value: '', enabled: true }]);
   const handleRemoveHeader = idx => setHeaders(hs => hs.length === 1 ? hs : hs.filter((_, i) => i !== idx));
 
   // Reemplazar url por urlBase en el input
   // Generar la URL final con los params en tiempo real
-  const paramString = params.filter(p => p.key).map(p => `${encodeURIComponent(p.key)}=${encodeURIComponent(p.value)}`).join('&');
+  const paramString = params.filter(p => p.enabled && p.key).map(p => `${encodeURIComponent(p.key)}=${encodeURIComponent(p.value)}`).join('&');
   const url = urlBase + (paramString ? (urlBase.includes('?') ? '&' : '?') + paramString : '');
 
   // Cuando el usuario edita la URL, solo se edita la base (sin query)
@@ -101,20 +148,42 @@ export default function RequestForm({ onNewRequest, replica, setReplica }) {
     setError(null);
     setSuccess(false);
     let responseData = null;
-    // Construir URL con params
+    let status = null;
+    let responseTime = null;
     let finalUrl = url; // url ya tiene los params
-    const paramString = params.filter(p => p.key).map(p => `${encodeURIComponent(p.key)}=${encodeURIComponent(p.value)}`).join('&');
-    if (paramString) {
-      finalUrl += (finalUrl.includes('?') ? '&' : '?') + paramString;
+    let paramsCopy = params.filter(p => p.enabled !== false);
+    let headersObj = headers.filter(h => h.enabled !== false && h.key).reduce((acc, h) => ({ ...acc, [h.key]: h.value }), {});
+    let bodyCopy = body;
+    // Ejecutar prescript si existe
+    if (prescript.trim()) {
+      try {
+        // eslint-disable-next-line no-new-func
+        const fn = new Function('url', 'method', 'params', 'headers', 'body', prescript + '\nreturn { url, method, params, headers, body };');
+        const result = fn(finalUrl, method, paramsCopy, headersObj, bodyCopy);
+        finalUrl = result.url;
+        paramsCopy = result.params;
+        headersObj = result.headers;
+        bodyCopy = result.body;
+      } catch (err) {
+        setError('Error en prescript: ' + err.message);
+        setLoading(false);
+        return;
+      }
     }
-    // Headers
-    const headersObj = headers.filter(h => h.key).reduce((acc, h) => ({ ...acc, [h.key]: h.value }), {});
+    // Reconstruir URL si params cambiaron
+    const paramString = paramsCopy.filter(p => p.enabled !== false && p.key).map(p => `${encodeURIComponent(p.key)}=${encodeURIComponent(p.value)}`).join('&');
+    if (paramString) {
+      finalUrl = finalUrl.split('?')[0] + (paramString ? (finalUrl.includes('?') ? '&' : '?') + paramString : '');
+    }
     let fetchOptions = { method, headers: headersObj };
     if (["POST", "PUT", "PATCH"].includes(method)) {
-      fetchOptions.body = body;
+      fetchOptions.body = bodyCopy;
     }
     try {
+      const start = Date.now();
       const res = await fetch(finalUrl, fetchOptions);
+      responseTime = Date.now() - start;
+      status = res.status;
       const contentType = res.headers.get('content-type') || '';
       if (contentType.includes('application/json')) {
         responseData = await res.json();
@@ -128,9 +197,14 @@ export default function RequestForm({ onNewRequest, replica, setReplica }) {
     const req = {
       url: finalUrl,
       method,
-      params: params.filter(p => p.key),
+      params: paramsCopy.filter(p => p.key),
       headers: headersObj,
-      body: ["POST", "PUT", "PATCH"].includes(method) ? body : undefined,
+      body: ["POST", "PUT", "PATCH"].includes(method) ? bodyCopy : undefined,
+      tags: tags.split(',').map(t => t.trim()).filter(Boolean),
+      collection,
+      status,
+      responseTime,
+      prescript,
       date: new Date(),
       response: responseData,
     };
@@ -138,14 +212,17 @@ export default function RequestForm({ onNewRequest, replica, setReplica }) {
     onNewRequest();
     setUrlBase('');
     setBody('');
-    setParams([{ key: '', value: '' }]);
-    setHeaders([{ key: '', value: '' }]);
+    setParams([{ key: '', value: '', enabled: true }]);
+    setHeaders(DEFAULT_HEADERS);
     setActiveTab('Params');
+    setTags('');
+    setCollection('');
+    setPrescript('');
     setSuccess(true);
     setLoading(false);
     setTimeout(() => setSuccess(false), 2000);
     // Guardar en cache el estado limpio
-    localStorage.setItem(CACHE_KEY, JSON.stringify({ urlBase: '', method: 'GET', params: [{ key: '', value: '' }], headers: [{ key: '', value: '' }], body: '', activeTab: 'Params' }));
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ urlBase: '', method: 'GET', params: [{ key: '', value: '', enabled: true }], headers: DEFAULT_HEADERS, body: '', activeTab: 'Params', tags: '', collection: '', prescript: '' }));
   };
 
   return (
@@ -170,18 +247,35 @@ export default function RequestForm({ onNewRequest, replica, setReplica }) {
         />
         <button type="button" className="px-3 py-2 rounded-md bg-gray-700 text-gray-100 text-xs font-medium hover:bg-gray-600 ml-0 sm:ml-2" onClick={handleClear}>Limpiar</button>
       </div>
-      {/* Guardar config y cargar configs */}
+      {/* Tags y colección */}
       <div className="flex flex-col sm:flex-row gap-2 items-center mb-2">
         <input
           type="text"
-          className="bg-gray-900 border border-gray-700 text-gray-100 rounded-md px-3 py-1 text-xs flex-1 focus:outline-none focus:ring-2 focus:ring-blue-400"
+          className="bg-gray-900 border border-gray-700 text-gray-100 rounded-md px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-blue-400"
+          placeholder="Etiquetas (separadas por coma)"
+          value={tags}
+          onChange={e => setTags(e.target.value)}
+        />
+        <input
+          type="text"
+          className="bg-gray-900 border border-gray-700 text-gray-100 rounded-md px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-blue-400"
+          placeholder="Colección (opcional)"
+          value={collection}
+          onChange={e => setCollection(e.target.value)}
+        />
+      </div>
+      {/* Guardar config y cargar configs */}
+      <div className="flex flex-col gap-2 mb-2">
+        <input
+          type="text"
+          className="bg-gray-900 border border-gray-700 text-gray-100 rounded-md px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-blue-400"
           placeholder="Nombre de la configuración"
           value={configName}
           onChange={e => setConfigName(e.target.value)}
         />
-        <button type="button" className="px-3 py-1 rounded-md bg-blue-700 text-white text-xs font-medium hover:bg-blue-800" onClick={handleSaveConfig} disabled={!configName.trim()}>Guardar configuración</button>
+        <button type="button" className="w-full px-3 py-2 rounded-md bg-blue-700 text-white text-sm font-medium hover:bg-blue-800" onClick={handleSaveConfig} disabled={!configName.trim()}>Guardar configuración</button>
         {configs.length > 0 && (
-          <select className="bg-gray-900 border border-gray-700 text-gray-100 rounded-md px-3 py-1 text-xs" onChange={e => {
+          <select className="bg-gray-900 border border-gray-700 text-gray-100 rounded-md px-3 py-2 text-sm w-full" onChange={e => {
             const idx = e.target.value;
             if (idx !== '') handleLoadConfig(configs[idx]);
           }} defaultValue="">
@@ -215,6 +309,7 @@ export default function RequestForm({ onNewRequest, replica, setReplica }) {
           <div className="flex flex-col gap-1">
             {params.map((p, idx) => (
               <div key={idx} className="flex gap-2 items-center">
+                <input type="checkbox" checked={p.enabled !== false} onChange={e => handleParamEnabled(idx, e.target.checked)} className="accent-blue-500" />
                 <input
                   className="border border-gray-700 px-2 py-1 rounded-md bg-gray-900 text-gray-100 text-xs flex-1"
                   placeholder="Clave"
@@ -242,6 +337,7 @@ export default function RequestForm({ onNewRequest, replica, setReplica }) {
           <div className="flex flex-col gap-1">
             {headers.map((h, idx) => (
               <div key={idx} className="flex gap-2 items-center">
+                <input type="checkbox" checked={h.enabled !== false} onChange={e => handleHeaderEnabled(idx, e.target.checked)} className="accent-blue-500" />
                 <input
                   className="border border-gray-700 px-2 py-1 rounded-md bg-gray-900 text-gray-100 text-xs flex-1"
                   placeholder="Clave"
@@ -271,6 +367,18 @@ export default function RequestForm({ onNewRequest, replica, setReplica }) {
           />
         </div>
       )}
+     {activeTab === 'Prescript' && (
+       <div>
+         <div className="text-xs text-gray-400 font-semibold mb-1">Prescript (JS antes de enviar)</div>
+         <textarea
+           className="border border-gray-700 px-2 py-2 rounded-md bg-gray-900 text-gray-100 w-full min-h-[80px] text-xs focus:outline-none focus:ring-2 focus:ring-blue-400"
+           placeholder={"// Puedes modificar url, method, params, headers, body\n// Ejemplo:\nheaders['Authorization'] = 'Bearer ' + localStorage.getItem('token');\nreturn { url, method, params, headers, body };"}
+           value={prescript}
+           rows={8}
+           onChange={e => setPrescript(e.target.value)}
+         />
+       </div>
+     )}
       <button
         type="submit"
         className={`w-full sm:w-auto px-4 py-2 rounded-md font-medium bg-blue-600 text-white transition hover:bg-blue-700 disabled:opacity-60 flex items-center justify-center ${loading ? 'cursor-wait' : ''}`}

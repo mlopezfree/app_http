@@ -31,6 +31,8 @@ export default function RequestList({ onReplicate }) {
   const [methodFilter, setMethodFilter] = useState('Todos');
   const [responseSearch, setResponseSearch] = useState('');
   const [selectedRequest, setSelectedRequest] = useState(null);
+  const [tab, setTab] = useState('Historial');
+  const [favorites, setFavorites] = useState(() => JSON.parse(localStorage.getItem('http-client-favs') || '[]'));
 
   const loadRequests = async () => {
     const all = await getAllRequests();
@@ -53,6 +55,22 @@ export default function RequestList({ onReplicate }) {
 
   // Ordenar por fecha descendente
   const sortedRequests = [...filteredRequests].sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  // Marcar/desmarcar favorito
+  const toggleFavorite = (req) => {
+    let favs = JSON.parse(localStorage.getItem('http-client-favs') || '[]');
+    const exists = favs.find(f => f.id === req.id);
+    if (exists) {
+      favs = favs.filter(f => f.id !== req.id);
+    } else {
+      favs = [{ ...req }, ...favs];
+    }
+    setFavorites(favs);
+    localStorage.setItem('http-client-favs', JSON.stringify(favs));
+  };
+
+  // Mostrar favoritos o historial
+  const showRequests = tab === 'Favoritos' ? favorites : sortedRequests;
 
   const handleShowResponse = (request) => {
     setSelectedRequest(request);
@@ -143,8 +161,12 @@ export default function RequestList({ onReplicate }) {
 
   return (
     <div className="mt-4">
+      <div className="flex gap-2 mb-2">
+        <button className={`px-3 py-1 rounded-t-md text-xs font-semibold ${tab === 'Historial' ? 'bg-gray-900 text-blue-400 border-b-2 border-blue-400' : 'bg-gray-800 text-gray-400 hover:text-blue-300'}`} onClick={() => setTab('Historial')}>Historial</button>
+        <button className={`px-3 py-1 rounded-t-md text-xs font-semibold ${tab === 'Favoritos' ? 'bg-gray-900 text-yellow-400 border-b-2 border-yellow-400' : 'bg-gray-800 text-gray-400 hover:text-yellow-300'}`} onClick={() => setTab('Favoritos')}>Favoritos</button>
+      </div>
       <div className="flex flex-col sm:flex-row items-center mb-2 gap-2 sm:gap-4">
-        <h2 className="text-xl font-semibold flex-1 tracking-tight">Peticiones guardadas</h2>
+        <h2 className="text-xl font-semibold flex-1 tracking-tight">{tab === 'Favoritos' ? 'Favoritos' : 'Peticiones guardadas'}</h2>
         {requests.length > 0 && (
           <button
             className="bg-gray-700 text-gray-100 px-3 py-1 rounded-md text-xs hover:bg-gray-600 border border-gray-700 transition w-full sm:w-auto"
@@ -180,15 +202,22 @@ export default function RequestList({ onReplicate }) {
       {/* Lista filtrada */}
       {feedback && <div className="text-green-600 dark:text-green-400 text-xs mb-2 animate-fade-in">{feedback}</div>}
       <ul className="flex flex-col gap-3">
-        {sortedRequests.map(req => (
+        {showRequests.map(req => (
           <li key={req.id} className="bg-gray-800 border border-gray-700 rounded-lg p-3 flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3 transition">
             <div className="flex items-center gap-2 w-full">
+              <button className={`text-lg ${favorites.find(f => f.id === req.id) ? 'text-yellow-400' : 'text-gray-500 hover:text-yellow-400'} transition`} title="Favorito" onClick={() => toggleFavorite(req)}>
+                ★
+              </button>
               <span className="px-2 py-0.5 rounded text-xs font-semibold border whitespace-nowrap bg-gray-900 text-green-400 border-gray-700">{req.method}</span>
               <span className="font-mono text-sm break-all flex-1">{req.url}</span>
               {req.name && <span className="ml-2 text-xs text-blue-300 font-semibold">{req.name}</span>}
+              {req.collection && <span className="ml-2 text-xs bg-blue-900 text-blue-200 px-2 py-0.5 rounded">{req.collection}</span>}
+              {req.tags && req.tags.length > 0 && req.tags.map((tag, i) => <span key={i} className="ml-1 text-xs bg-gray-700 text-gray-200 px-2 py-0.5 rounded">{tag}</span>)}
             </div>
             <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full sm:w-auto">
               <span className="text-xs text-gray-400 whitespace-nowrap">{timeAgo(req.date)}</span>
+              {req.status && <span className="text-xs text-green-400">{req.status}</span>}
+              {req.responseTime != null && <span className="text-xs text-gray-400">{req.responseTime}ms</span>}
               <button
                 className="flex-grow-0 flex items-center gap-1 bg-gray-700 text-gray-100 px-3 py-1 rounded-md text-xs font-medium hover:bg-gray-600 transition-colors"
                 onClick={() => handleShowResponse(req)}
