@@ -223,7 +223,11 @@ export default function RequestForm({ onNewRequest, replica, setReplica }) {
       }
     } catch (err) {
       responseData = `ERROR: ${err.message}`;
-      setError(err.message);
+      setError('Error de red o CORS: ' + err.message);
+      setLoading(false);
+      setSuccess(false);
+      // Permitir seguir usando la app sin reiniciar
+      return;
     }
     const req = {
       url: finalUrl,
@@ -346,17 +350,20 @@ export default function RequestForm({ onNewRequest, replica, setReplica }) {
         )}
       </div>
       {/* Tabs */}
-      <div className="flex gap-2 border-b border-gray-700 mb-2">
-        {TABS.map(tab => (
-          <button
-            key={tab}
-            type="button"
-            className={`px-3 py-1 text-xs font-semibold rounded-t-md transition-colors focus:outline-none ${activeTab === tab ? 'bg-gray-900 text-blue-400 border-b-2 border-blue-400' : 'bg-gray-800 text-gray-400 hover:text-blue-300'}`}
-            onClick={() => setActiveTab(tab)}
-          >
-            {tab}
-          </button>
-        ))}
+      <div className="w-full overflow-x-auto no-scrollbar px-1">
+        <div className="flex gap-2 border-b border-gray-700 mb-2 whitespace-nowrap">
+          {TABS.map(tab => (
+            <button
+              key={tab}
+              type="button"
+              className={`px-3 py-1 text-xs font-semibold rounded-t-md transition-colors focus:outline-none ${activeTab === tab ? 'bg-gray-900 text-blue-400 border-b-2 border-blue-400' : 'bg-gray-800 text-gray-400 hover:text-blue-300'} min-w-[80px]`}
+              onClick={() => setActiveTab(tab)}
+              style={{ flex: '0 0 auto' }}
+            >
+              {tab}
+            </button>
+          ))}
+        </div>
       </div>
       {/* Secciones dinámicas */}
       {activeTab === 'Params' && (
@@ -367,21 +374,24 @@ export default function RequestForm({ onNewRequest, replica, setReplica }) {
           </div>
           <div className="flex flex-col gap-1">
             {params.map((p, idx) => (
-              <div key={idx} className="flex gap-2 items-center">
+              <div key={idx} className="flex flex-wrap gap-2 items-center">
                 <input type="checkbox" checked={p.enabled !== false} onChange={e => handleParamEnabled(idx, e.target.checked)} className="accent-blue-500" />
                 <input
-                  className="border border-gray-700 px-2 py-1 rounded-md bg-gray-900 text-gray-100 text-xs flex-1"
+                  className="border border-gray-700 px-2 py-1 rounded-md bg-gray-900 text-gray-100 text-xs flex-1 min-w-0"
                   placeholder="Clave"
                   value={p.key}
                   onChange={e => handleParamChange(idx, 'key', e.target.value)}
                 />
                 <input
-                  className="border border-gray-700 px-2 py-1 rounded-md bg-gray-900 text-gray-100 text-xs flex-1"
+                  className="border border-gray-700 px-2 py-1 rounded-md bg-gray-900 text-gray-100 text-xs flex-1 min-w-0"
                   placeholder="Valor"
                   value={p.value}
                   onChange={e => handleParamChange(idx, 'value', e.target.value)}
                 />
-                <button type="button" className="px-2 py-1 rounded bg-gray-700 text-gray-100 text-xs hover:bg-red-700" onClick={() => handleRemoveParam(idx)} disabled={params.length === 1}>🗑</button>
+                <button type="button" className="px-2 py-1 rounded bg-gray-700 text-gray-100 text-xs hover:bg-red-700 flex-shrink-0 w-8 h-8 flex items-center justify-center" onClick={() => handleRemoveParam(idx)} disabled={params.length === 1}>
+                  <span className="hidden sm:inline">🗑</span>
+                  <span className="sm:hidden" aria-label="Eliminar">🗑</span>
+                </button>
               </div>
             ))}
           </div>
@@ -395,21 +405,24 @@ export default function RequestForm({ onNewRequest, replica, setReplica }) {
           </div>
           <div className="flex flex-col gap-1">
             {headers.map((h, idx) => (
-              <div key={idx} className="flex gap-2 items-center">
+              <div key={idx} className="flex flex-wrap gap-2 items-center">
                 <input type="checkbox" checked={h.enabled !== false} onChange={e => handleHeaderEnabled(idx, e.target.checked)} className="accent-blue-500" />
                 <input
-                  className="border border-gray-700 px-2 py-1 rounded-md bg-gray-900 text-gray-100 text-xs flex-1"
+                  className="border border-gray-700 px-2 py-1 rounded-md bg-gray-900 text-gray-100 text-xs flex-1 min-w-0"
                   placeholder="Clave"
                   value={h.key}
                   onChange={e => handleHeaderChange(idx, 'key', e.target.value)}
                 />
                 <input
-                  className="border border-gray-700 px-2 py-1 rounded-md bg-gray-900 text-gray-100 text-xs flex-1"
+                  className="border border-gray-700 px-2 py-1 rounded-md bg-gray-900 text-gray-100 text-xs flex-1 min-w-0"
                   placeholder="Valor"
                   value={h.value}
                   onChange={e => handleHeaderChange(idx, 'value', e.target.value)}
                 />
-                <button type="button" className="px-2 py-1 rounded bg-gray-700 text-gray-100 text-xs hover:bg-red-700" onClick={() => handleRemoveHeader(idx)} disabled={headers.length === 1}>🗑</button>
+                <button type="button" className="px-2 py-1 rounded bg-gray-700 text-gray-100 text-xs hover:bg-red-700 flex-shrink-0 w-8 h-8 flex items-center justify-center" onClick={() => handleRemoveHeader(idx)} disabled={headers.length === 1}>
+                  <span className="hidden sm:inline">🗑</span>
+                  <span className="sm:hidden" aria-label="Eliminar">🗑</span>
+                </button>
               </div>
             ))}
           </div>
@@ -446,20 +459,23 @@ export default function RequestForm({ onNewRequest, replica, setReplica }) {
           </div>
           <div className="flex flex-col gap-1">
             {variables.map((v, idx) => (
-              <div key={idx} className="flex gap-2 items-center">
+              <div key={idx} className="flex flex-wrap gap-2 items-center">
                 <input
-                  className="border border-gray-700 px-2 py-1 rounded-md bg-gray-900 text-gray-100 text-xs flex-1"
+                  className="border border-gray-700 px-2 py-1 rounded-md bg-gray-900 text-gray-100 text-xs flex-1 min-w-0"
                   placeholder="Clave"
                   value={v.key}
                   onChange={e => handleVariableChange(idx, 'key', e.target.value)}
                 />
                 <input
-                  className="border border-gray-700 px-2 py-1 rounded-md bg-gray-900 text-gray-100 text-xs flex-1"
+                  className="border border-gray-700 px-2 py-1 rounded-md bg-gray-900 text-gray-100 text-xs flex-1 min-w-0"
                   placeholder="Valor"
                   value={v.value}
                   onChange={e => handleVariableChange(idx, 'value', e.target.value)}
                 />
-                <button type="button" className="px-2 py-1 rounded bg-gray-700 text-gray-100 text-xs hover:bg-red-700" onClick={() => handleRemoveVariable(idx)} disabled={variables.length === 1}>🗑</button>
+                <button type="button" className="px-2 py-1 rounded bg-gray-700 text-gray-100 text-xs hover:bg-red-700 flex-shrink-0 w-8 h-8 flex items-center justify-center" onClick={() => handleRemoveVariable(idx)} disabled={variables.length === 1}>
+                  <span className="hidden sm:inline">🗑</span>
+                  <span className="sm:hidden" aria-label="Eliminar">🗑</span>
+                </button>
               </div>
             ))}
           </div>
