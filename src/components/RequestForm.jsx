@@ -222,11 +222,11 @@ export default function RequestForm({ onNewRequest, replica, setReplica }) {
         responseData = await res.text();
       }
     } catch (err) {
-      responseData = `ERROR: ${err.message}`;
+      setErrorBanner('Error de red o CORS: ' + err.message);
       setError('Error de red o CORS: ' + err.message);
       setLoading(false);
       setSuccess(false);
-      // Permitir seguir usando la app sin reiniciar
+      // No guardar ni procesar la respuesta
       return;
     }
     const req = {
@@ -288,8 +288,17 @@ export default function RequestForm({ onNewRequest, replica, setReplica }) {
     reader.readAsText(file);
   };
 
+  // Antes del return, agregar un estado para mostrar el error como banner
+  const [errorBanner, setErrorBanner] = useState(null);
+
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-3 bg-gray-800 border border-gray-700 p-3 rounded-lg mb-6 transition-colors">
+      {errorBanner && (
+        <div className="bg-red-700 text-white text-xs rounded p-2 mb-2 text-center animate-fade-in">
+          {errorBanner}
+          <button className="ml-2 px-2 py-0.5 bg-red-900 rounded hover:bg-red-800 text-xs" onClick={() => setErrorBanner(null)}>Cerrar</button>
+        </div>
+      )}
       <div className="flex flex-col sm:flex-row gap-2 items-stretch">
         <select
           className="border border-gray-700 px-2 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400 transition bg-gray-900 text-gray-100 flex-shrink-0 w-full sm:w-28"
