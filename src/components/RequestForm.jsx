@@ -2,7 +2,7 @@ import { saveRequest } from '../utils/db';
 import { useState, useEffect } from 'react';
 
 const METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'];
-const TABS = ['Params', 'Headers', 'Body', 'Prescript'];
+const TABS = ['Params', 'Headers', 'Body', 'Prescript', 'Variables'];
 const CONFIG_KEY = 'http-client-configs';
 const CACHE_KEY = 'http-client-last';
 
@@ -47,6 +47,8 @@ export default function RequestForm({ onNewRequest, replica, setReplica }) {
   const [tags, setTags] = useState(last.tags || '');
   const [collection, setCollection] = useState(last.collection || '');
   const [prescript, setPrescript] = useState(last.prescript || '');
+  // Sección de variables simples
+  const [variables, setVariables] = useState(last.variables || [{ key: '', value: '' }]);
 
   // Guardar en cache cada vez que cambia algo relevante
   useEffect(() => {
@@ -71,6 +73,7 @@ export default function RequestForm({ onNewRequest, replica, setReplica }) {
       setTags(replica.tags || '');
       setCollection(replica.collection || '');
       setPrescript(replica.prescript || '');
+      setVariables(replica.variables || [{ key: '', value: '' }]);
       setReplica && setReplica(null);
     }
   }, [replica, setReplica]);
@@ -96,6 +99,7 @@ export default function RequestForm({ onNewRequest, replica, setReplica }) {
     setTags(cfg.tags || '');
     setCollection(cfg.collection || '');
     setPrescript(cfg.prescript || '');
+    setVariables(cfg.variables || [{ key: '', value: '' }]);
   };
 
   // Limpiar formulario
@@ -109,6 +113,7 @@ export default function RequestForm({ onNewRequest, replica, setReplica }) {
     setTags('');
     setCollection('');
     setPrescript('');
+    setVariables([{ key: '', value: '' }]);
   };
 
   // Cambios en params y headers
@@ -130,6 +135,13 @@ export default function RequestForm({ onNewRequest, replica, setReplica }) {
   const handleAddHeader = () => setHeaders(hs => [...hs, { key: '', value: '', enabled: true }]);
   const handleRemoveHeader = idx => setHeaders(hs => hs.length === 1 ? hs : hs.filter((_, i) => i !== idx));
 
+  // Cambios en variables simples
+  const handleVariableChange = (idx, field, value) => {
+    setVariables(vars => vars.map((v, i) => i === idx ? { ...v, [field]: value } : v));
+  };
+  const handleAddVariable = () => setVariables(vars => [...vars, { key: '', value: '' }]);
+  const handleRemoveVariable = idx => setVariables(vars => vars.length === 1 ? vars : vars.filter((_, i) => i !== idx));
+
   // Reemplazar url por urlBase en el input
   // Generar la URL final con los params en tiempo real
   const paramString = params.filter(p => p.enabled && p.key).map(p => `${encodeURIComponent(p.key)}=${encodeURIComponent(p.value)}`).join('&');
@@ -141,6 +153,25 @@ export default function RequestForm({ onNewRequest, replica, setReplica }) {
     const [base] = value.split('?');
     setUrlBase(base);
   };
+
+  // Reemplazo de variables en string
+  function replaceVars(str) {
+    if (!str || typeof str !== 'string') return str;
+    let out = str;
+    variables.forEach(v => {
+      if (v.key) out = out.replaceAll(`{{${v.key}}}`, v.value);
+    });
+    return out;
+  }
+  // Reemplazo de variables en objeto (headers, params)
+  function replaceVarsObj(obj) {
+    if (!obj) return obj;
+    const out = {};
+    Object.entries(obj).forEach(([k, v]) => {
+      out[replaceVars(k)] = replaceVars(v);
+    });
+    return out;
+  }
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -222,7 +253,35 @@ export default function RequestForm({ onNewRequest, replica, setReplica }) {
     setLoading(false);
     setTimeout(() => setSuccess(false), 2000);
     // Guardar en cache el estado limpio
-    localStorage.setItem(CACHE_KEY, JSON.stringify({ urlBase: '', method: 'GET', params: [{ key: '', value: '', enabled: true }], headers: DEFAULT_HEADERS, body: '', activeTab: 'Params', tags: '', collection: '', prescript: '' }));
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ urlBase: '', method: 'GET', params: [{ key: '', value: '', enabled: true }], headers: DEFAULT_HEADERS, body: '', activeTab: 'Params', tags: '', collection: '', prescript: '', variables: [{ key: '', value: '' }] }));
+  };
+
+  // Exportar configuraciones
+  const handleExportConfigs = () => {
+    const data = JSON.stringify(configs, null, 2);
+    const blob = new Blob([data], { type: 'application/json' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'configs.json';
+    a.click();
+    window.URL.revokeObjectURL(url);
+  };
+  // Importar configuraciones
+  const handleImportConfigs = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = evt => {
+      try {
+        const imported = JSON.parse(evt.target.result);
+        if (Array.isArray(imported)) {
+          setConfigs(imported.concat(configs));
+          localStorage.setItem(CONFIG_KEY, JSON.stringify(imported.concat(configs)));
+        }
+      } catch {}
+    };
+    reader.readAsText(file);
   };
 
   return (
@@ -379,6 +438,40 @@ export default function RequestForm({ onNewRequest, replica, setReplica }) {
          />
        </div>
      )}
+      {activeTab === 'Variables' && (
+        <div className="flex flex-col gap-2 mb-2">
+          <div className="flex items-center mb-1">
+            <span className="text-xs text-gray-400 font-semibold flex-1">Variables ({"{{variable}}"})</span>
+            <button type="button" className="ml-2 px-2 py-0.5 rounded bg-gray-700 text-gray-100 text-xs hover:bg-gray-600" onClick={handleAddVariable}>+ Añadir</button>
+          </div>
+          <div className="flex flex-col gap-1">
+            {variables.map((v, idx) => (
+              <div key={idx} className="flex gap-2 items-center">
+                <input
+                  className="border border-gray-700 px-2 py-1 rounded-md bg-gray-900 text-gray-100 text-xs flex-1"
+                  placeholder="Clave"
+                  value={v.key}
+                  onChange={e => handleVariableChange(idx, 'key', e.target.value)}
+                />
+                <input
+                  className="border border-gray-700 px-2 py-1 rounded-md bg-gray-900 text-gray-100 text-xs flex-1"
+                  placeholder="Valor"
+                  value={v.value}
+                  onChange={e => handleVariableChange(idx, 'value', e.target.value)}
+                />
+                <button type="button" className="px-2 py-1 rounded bg-gray-700 text-gray-100 text-xs hover:bg-red-700" onClick={() => handleRemoveVariable(idx)} disabled={variables.length === 1}>🗑</button>
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2 mt-2">
+            <button type="button" className="px-2 py-1 rounded bg-gray-700 text-gray-100 text-xs hover:bg-gray-600" onClick={handleExportConfigs}>Exportar configs</button>
+            <label className="px-2 py-1 rounded bg-gray-700 text-gray-100 text-xs hover:bg-gray-600 cursor-pointer">
+              Importar configs
+              <input type="file" accept="application/json" className="hidden" onChange={handleImportConfigs} />
+            </label>
+          </div>
+        </div>
+      )}
       <button
         type="submit"
         className={`w-full sm:w-auto px-4 py-2 rounded-md font-medium bg-blue-600 text-white transition hover:bg-blue-700 disabled:opacity-60 flex items-center justify-center ${loading ? 'cursor-wait' : ''}`}

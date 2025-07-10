@@ -17,12 +17,18 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gray-900 text-gray-100 transition-colors">
-      <div className="max-w-xl mx-auto py-6 sm:py-10 px-2 sm:px-0">
+      <div className="max-w-7xl mx-auto px-2 sm:px-0">
         <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-center w-full sm:text-left">Mini HTTP Client</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight pt-6 sm:pt-10 text-center w-full">Mini HTTP Client</h1>
         </div>
-        <RequestForm onNewRequest={handleNewRequest} replica={replica} setReplica={setReplica} />
-        <RequestList key={reload} onReplicate={handleReplicate} />
+        <div className="flex flex-col md:flex-row gap-6">
+          <div className="md:w-1/2">
+            <RequestForm onNewRequest={handleNewRequest} replica={replica} setReplica={setReplica} />
+          </div>
+          <div className="md:w-1/2">
+            <RequestList key={reload} onReplicate={handleReplicate} />
+          </div>
+        </div>
       </div>
     </div>
   );

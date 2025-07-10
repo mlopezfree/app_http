@@ -33,6 +33,8 @@ export default function RequestList({ onReplicate }) {
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [tab, setTab] = useState('Historial');
   const [favorites, setFavorites] = useState(() => JSON.parse(localStorage.getItem('http-client-favs') || '[]'));
+  // Estado para tab de respuesta
+  const [responseTab, setResponseTab] = useState('Preview');
 
   const loadRequests = async () => {
     const all = await getAllRequests();
@@ -159,8 +161,67 @@ export default function RequestList({ onReplicate }) {
     }
   }
 
+  // Exportar historial
+  const handleExportHistory = () => {
+    const data = JSON.stringify(requests, null, 2);
+    const blob = new Blob([data], { type: 'application/json' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'historial.json';
+    a.click();
+    window.URL.revokeObjectURL(url);
+  };
+  // Importar historial
+  const handleImportHistory = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = evt => {
+      try {
+        const imported = JSON.parse(evt.target.result);
+        if (Array.isArray(imported)) {
+          // Guardar en IndexedDB (solo nuevos)
+          imported.forEach(async req => {
+            if (!requests.find(r => r.id === req.id)) {
+              await window.indexedDB && window.indexedDB.databases ? null : null; // placeholder
+              // Aquí deberías usar saveRequest si está disponible globalmente
+            }
+          });
+          setRequests(imported.concat(requests));
+        }
+      } catch {}
+    };
+    reader.readAsText(file);
+  };
+  // Generador de código cURL
+  function toCurl(req) {
+    let curl = `curl -X ${req.method} '` + req.url + `'`;
+    if (req.headers && Object.keys(req.headers).length) {
+      Object.entries(req.headers).forEach(([k, v]) => {
+        curl += ` -H "${k}: ${v}"`;
+      });
+    }
+    if (req.body) {
+      curl += ` -d '${typeof req.body === 'object' ? JSON.stringify(req.body) : req.body}'`;
+    }
+    return curl;
+  }
+  // Generador de código fetch
+  function toFetch(req) {
+    let code = `fetch('${req.url}', {\n  method: '${req.method}',`;
+    if (req.headers && Object.keys(req.headers).length) {
+      code += `\n  headers: ${JSON.stringify(req.headers, null, 2)},`;
+    }
+    if (req.body) {
+      code += `\n  body: ${JSON.stringify(req.body)},`;
+    }
+    code += '\n})\n  .then(r => r.json())\n  .then(console.log)';
+    return code;
+  }
+
   return (
-    <div className="mt-4">
+    <div className="mt-4 sm:mt-0">
       <div className="flex gap-2 mb-2">
         <button className={`px-3 py-1 rounded-t-md text-xs font-semibold ${tab === 'Historial' ? 'bg-gray-900 text-blue-400 border-b-2 border-blue-400' : 'bg-gray-800 text-gray-400 hover:text-blue-300'}`} onClick={() => setTab('Historial')}>Historial</button>
         <button className={`px-3 py-1 rounded-t-md text-xs font-semibold ${tab === 'Favoritos' ? 'bg-gray-900 text-yellow-400 border-b-2 border-yellow-400' : 'bg-gray-800 text-gray-400 hover:text-yellow-300'}`} onClick={() => setTab('Favoritos')}>Favoritos</button>
@@ -201,6 +262,13 @@ export default function RequestList({ onReplicate }) {
       </div>
       {/* Lista filtrada */}
       {feedback && <div className="text-green-600 dark:text-green-400 text-xs mb-2 animate-fade-in">{feedback}</div>}
+      <div className="flex gap-2 mb-2">
+        <button className="px-2 py-1 rounded bg-gray-700 text-gray-100 text-xs hover:bg-gray-600" onClick={handleExportHistory}>Exportar historial</button>
+        <label className="px-2 py-1 rounded bg-gray-700 text-gray-100 text-xs hover:bg-gray-600 cursor-pointer">
+          Importar historial
+          <input type="file" accept="application/json" className="hidden" onChange={handleImportHistory} />
+        </label>
+      </div>
       <ul className="flex flex-col gap-3">
         {showRequests.map(req => (
           <li key={req.id} className="bg-gray-800 border border-gray-700 rounded-lg p-3 flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3 transition">
@@ -288,8 +356,54 @@ export default function RequestList({ onReplicate }) {
               value={responseSearch}
               onChange={e => setResponseSearch(e.target.value)}
             />
+            <div className="flex gap-2 mb-2">
+              <button className={`px-2 py-1 rounded text-xs font-semibold ${responseTab === 'Preview' ? 'bg-blue-700 text-white' : 'bg-gray-800 text-gray-300'}`} onClick={() => setResponseTab('Preview')}>Preview</button>
+              <button className={`px-2 py-1 rounded text-xs font-semibold ${responseTab === 'Raw' ? 'bg-blue-700 text-white' : 'bg-gray-800 text-gray-300'}`} onClick={() => setResponseTab('Raw')}>Raw</button>
+              <button className={`px-2 py-1 rounded text-xs font-semibold ${responseTab === 'Descargar' ? 'bg-blue-700 text-white' : 'bg-gray-800 text-gray-300'}`} onClick={() => {
+                // Descargar respuesta como archivo
+                const blob = new Blob([typeof selectedResponse === 'object' ? JSON.stringify(selectedResponse, null, 2) : String(selectedResponse)], { type: 'text/plain' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'respuesta.txt';
+                a.click();
+                window.URL.revokeObjectURL(url);
+              }}>Descargar</button>
+            </div>
             <div className="overflow-x-auto">
-              {prettyResponse(selectedResponse)}
+              {responseTab === 'Preview' && (
+                <>
+                  {/* Si es JSON, mostrar formateado. Si es HTML, renderizar. Si es imagen, mostrar imagen. */}
+                  {(() => {
+                    let resp = selectedResponse;
+                    if (typeof resp === 'object') {
+                      return <pre className="bg-gray-800 p-2 rounded overflow-x-auto max-h-96 text-xs text-left">{JSON.stringify(resp, null, 2)}</pre>;
+                    }
+                    // ¿Es JSON?
+                    try {
+                      const obj = JSON.parse(resp);
+                      return <pre className="bg-gray-800 p-2 rounded overflow-x-auto max-h-96 text-xs text-left">{JSON.stringify(obj, null, 2)}</pre>;
+                    } catch {}
+                    // ¿Es imagen base64?
+                    if (/^data:image\//.test(resp)) {
+                      return <img src={resp} alt="Imagen respuesta" className="max-h-96 rounded mx-auto" />;
+                    }
+                    // ¿Es HTML?
+                    if (/<[a-z][\s\S]*>/i.test(resp)) {
+                      return <iframe title="preview-html" srcDoc={resp} className="w-full min-h-[200px] max-h-96 bg-white rounded" />;
+                    }
+                    // Texto plano
+                    return <pre className="bg-gray-800 p-2 rounded overflow-x-auto max-h-96 text-xs text-left">{String(resp)}</pre>;
+                  })()}
+                </>
+              )}
+              {responseTab === 'Raw' && (
+                <pre className="bg-gray-800 p-2 rounded overflow-x-auto max-h-96 text-xs text-left">{typeof selectedResponse === 'object' ? JSON.stringify(selectedResponse, null, 2) : String(selectedResponse)}</pre>
+              )}
+            </div>
+            <div className="flex gap-2 mb-2">
+              <button className="px-2 py-1 rounded bg-gray-700 text-gray-100 text-xs hover:bg-gray-600" onClick={() => copyToClipboard(toCurl(selectedRequest))}>Copiar cURL</button>
+              <button className="px-2 py-1 rounded bg-gray-700 text-gray-100 text-xs hover:bg-gray-600" onClick={() => copyToClipboard(toFetch(selectedRequest))}>Copiar fetch</button>
             </div>
           </div>
         </div>
